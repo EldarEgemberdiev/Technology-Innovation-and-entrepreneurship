@@ -1,0 +1,765 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Seed-Spreader Drone</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Saira+Semi+Condensed:wght@500;700&display=swap">
+<style>
+body{margin:0}
+
+/* Layout: field-ops console. 3D viewport on the left, control rail on the right, spec sheet below. */
+:root{
+  --bg:#ECEEE6; --panel:#FAFBF6; --line:#D2D7C9; --fg:#1C2219; --muted:#5B6554;
+  --accent:#D88A1C; --accent-text:#9A5A00; --accent-soft:#F6E6CC; --grow:#3F7D31; --sky:#D3DCCF;
+  --f-display:'Saira Semi Condensed','Arial Narrow',sans-serif;
+  --f-body:'IBM Plex Sans',system-ui,-apple-system,sans-serif;
+  --f-mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#121610; --panel:#1A1F17; --line:#2E3629; --fg:#E5E9DE; --muted:#97A18E;
+    --accent:#F0A43A; --accent-text:#F4B65E; --accent-soft:#3A2C16; --grow:#79B864; --sky:#1C2419; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#121610; --panel:#1A1F17; --line:#2E3629; --fg:#E5E9DE; --muted:#97A18E;
+  --accent:#F0A43A; --accent-text:#F4B65E; --accent-soft:#3A2C16; --grow:#79B864; --sky:#1C2419; color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:15px/1.55 var(--f-body)}
+.wrap{max-width:1240px;margin:0 auto;padding-inline:20px;padding-block:24px 48px;display:grid;gap:22px}
+.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:18px}
+.top > div{min-width:0;max-width:66ch}
+.eyebrow{margin:0 0 4px;font:500 11.5px/1 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+h1{margin:0;font:700 clamp(30px,4.4vw,46px)/1.02 var(--f-display);letter-spacing:-.01em;text-wrap:balance}
+.lede{margin:10px 0 0;color:var(--muted)}
+.lede b{color:var(--accent-text);font-weight:600}
+.tabs{display:inline-flex;border:1px solid var(--line);border-radius:8px;padding:3px;background:var(--panel)}
+.tab{font:600 14px var(--f-body);color:var(--muted);background:none;border:0;border-radius:6px;padding:8px 14px;cursor:pointer}
+.tab.on{background:var(--fg);color:var(--bg)}
+.tab:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.stage{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px;align-items:start}
+@media (max-width:880px){.stage{grid-template-columns:minmax(0,1fr)}}
+.viewport{position:relative;height:clamp(380px,64vh,680px);max-width:100%;border-radius:10px;overflow:hidden;background:var(--sky);border:1px solid var(--line)}
+.viewport canvas{display:block;width:100%;height:100%;touch-action:none}
+#labels{position:absolute;inset:0;pointer-events:none}
+.lbl{position:absolute;left:0;top:0;font:500 11.5px/1.2 var(--f-mono);padding:4px 7px;border-radius:4px;background:var(--panel);border:1px solid var(--line);color:var(--fg);white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.lbl.new{border-color:var(--accent);color:var(--accent-text)}
+.lbl i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;background:var(--muted);vertical-align:1px}
+.lbl.new i{background:var(--accent)}
+.chip{position:absolute;left:12px;top:12px;font:500 12px var(--f-mono);background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:5px 11px;display:flex;align-items:center;gap:8px}
+.chip::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.chip[data-s="work"]::before{background:var(--accent)}
+.chip[data-s="refill"]::before,.chip[data-s="toBase"]::before{background:#C9472B}
+.chip[data-s="done"]::before{background:var(--grow)}
+.hint{position:absolute;right:12px;bottom:10px;margin:0;font:12px var(--f-mono);color:var(--muted)}
+
+.rail{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;display:grid;gap:16px;min-width:0}
+.rail h2{margin:0;font:700 17px var(--f-display);letter-spacing:.01em}
+.group{display:grid;gap:10px}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.btn{font:600 14px var(--f-body);border-radius:7px;border:1px solid var(--line);background:var(--bg);color:var(--fg);padding:8px 14px;cursor:pointer}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#1C1406}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.seg button{font:500 13px var(--f-mono);border:0;background:var(--bg);color:var(--muted);padding:7px 11px;cursor:pointer}
+.seg button.on{background:var(--fg);color:var(--bg)}
+.ctl{display:grid;gap:4px}
+.ctl label{display:flex;justify-content:space-between;font-size:13px;color:var(--muted)}
+.ctl output{font:500 13px var(--f-mono);color:var(--fg);font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--accent)}
+input[type=range]:disabled{opacity:.4}
+.small{margin:0;font-size:12.5px;color:var(--muted)}
+.check{display:flex;align-items:center;gap:9px;font-size:14px;cursor:pointer}
+.check input{accent-color:var(--accent);width:16px;height:16px}
+.legend{display:grid;gap:6px;font-size:13px;color:var(--muted)}
+.legend span{display:flex;align-items:center;gap:8px}
+.sw{width:12px;height:12px;border-radius:3px;background:var(--accent)}
+.sw.k{background:#C9CDC4}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;margin:0}
+.stats div{min-width:0}
+.stats dt{font:500 10.5px var(--f-mono);letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.stats dd{margin:2px 0 0;font:600 18px var(--f-display);font-variant-numeric:tabular-nums}
+.bar{height:6px;border-radius:3px;background:var(--line);overflow:hidden;margin-top:5px}
+.bar b{display:block;height:100%;width:100%;background:var(--accent);transition:width .2s}
+hr{border:0;border-top:1px solid var(--line);margin:0}
+
+.sheet{display:grid;gap:12px}
+.sheet h2{margin:0;font:700 22px var(--f-display)}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;min-width:640px;font-size:14px}
+th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font:500 11px var(--f-mono);letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+tr:last-child td{border-bottom:0}
+.tag{display:inline-block;font:500 11px var(--f-mono);padding:2px 7px;border-radius:4px;background:var(--accent-soft);color:var(--accent-text)}
+.tag.k{background:var(--bg);color:var(--muted)}
+.notes{font-size:13px;color:var(--muted);max-width:80ch;margin:0}
+</style>
+</head>
+<body>
+
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <p class="eyebrow">Smart agriculture · concept model</p>
+      <h1>Seed-Spreader Drone</h1>
+      <p class="lede">A standard spraying hexacopter with three added parts: a <b>seed hopper</b>, a <b>metering gate</b> and a <b>spinner disc</b>. The same drone that sprays crops can re-seed the field after harvest.</p>
+    </div>
+    <div class="tabs" role="tablist">
+      <button class="tab on" id="tab-model" role="tab" aria-selected="true">3D model</button>
+      <button class="tab" id="tab-sim" role="tab" aria-selected="false">Seeding simulation</button>
+    </div>
+  </header>
+
+  <main class="stage">
+    <div class="viewport" id="vp">
+      <canvas id="c" aria-label="3D view of the seed-spreader drone"></canvas>
+      <div id="labels"></div>
+      <div class="chip" id="chip" data-s="model">Inspecting model</div>
+      <p class="hint">Drag to rotate · scroll or pinch to zoom</p>
+    </div>
+
+    <aside class="rail">
+      <section id="panel-model" class="group">
+        <h2>Model view</h2>
+        <label class="check"><input type="checkbox" id="opt-labels" checked> Show part labels</label>
+        <label class="check"><input type="checkbox" id="opt-explode"> Exploded view</label>
+        <label class="check"><input type="checkbox" id="opt-highlight" checked> Highlight added parts</label>
+        <hr>
+        <div class="legend">
+          <span><i class="sw"></i>Added for seeding</span>
+          <span><i class="sw k"></i>Stock spray drone (kept)</span>
+        </div>
+        <p class="small">The hopper sits on top so seed falls by gravity through the frame to the gate and disc underneath. The spray tank stays, so one drone does both jobs.</p>
+      </section>
+
+      <section id="panel-sim" class="group" hidden>
+        <h2>Re-seeding a harvested field</h2>
+        <div class="row">
+          <button class="btn primary" id="play">Start</button>
+          <button class="btn" id="reset">Reset</button>
+          <div class="seg" id="mult" aria-label="Simulation speed">
+            <button data-m="1">1×</button><button data-m="5" class="on">5×</button><button data-m="20">20×</button>
+          </div>
+        </div>
+        <div class="ctl">
+          <label for="speed">Flight speed <output id="o-speed">5 m/s</output></label>
+          <input type="range" id="speed" min="2" max="8" step="0.5" value="5">
+        </div>
+        <div class="ctl">
+          <label for="swath">Spread width <output id="o-swath">5 m</output></label>
+          <input type="range" id="swath" min="3" max="8" step="0.5" value="5">
+        </div>
+        <div class="ctl">
+          <label for="rate">Seed rate <output id="o-rate">80 kg/ha</output></label>
+          <input type="range" id="rate" min="30" max="150" step="5" value="80">
+        </div>
+        <p class="small" id="lock-hint">Spread width and seed rate lock during a run. Reset to change them.</p>
+        <label class="check"><input type="checkbox" id="follow"> Camera follows drone</label>
+        <hr>
+        <dl class="stats">
+          <div><dt>Field covered</dt><dd id="st-cov">0%</dd></div>
+          <div><dt>Area seeded</dt><dd id="st-area">0.000 ha</dd></div>
+          <div><dt>Seed dropped</dt><dd id="st-used">0.0 kg</dd></div>
+          <div><dt>Refill stops</dt><dd id="st-ref">0</dd></div>
+          <div><dt>Flight time</dt><dd id="st-time">0:00</dd></div>
+          <div><dt>Work rate</dt><dd id="st-rate">– ha/h</dd></div>
+          <div style="grid-column:1/-1"><dt>Hopper</dt><dd id="st-hop">25.0 / 25 kg</dd><div class="bar"><b id="hopbar"></b></div></div>
+        </dl>
+        <button class="btn" id="grow" disabled>Fast-forward 3 weeks</button>
+      </section>
+    </aside>
+  </main>
+
+  <section class="sheet">
+    <h2>What changed from a stock spray drone</h2>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Part</th><th>Status</th><th>What it does</th><th>3D-print note</th></tr></thead>
+        <tbody>
+          <tr><td>Seed hopper</td><td><span class="tag">Added</span></td><td>Holds 25 kg of seed on top of the frame. The see-through wall shows the fill level.</td><td>Print in two halves and join at the rim.</td></tr>
+          <tr><td>Metering gate</td><td><span class="tag">Added</span></td><td>Servo-driven slot under the hopper. It opens wider at higher flight speed so the seed rate per hectare stays the same.</td><td>One piece with a side pocket for a micro servo.</td></tr>
+          <tr><td>Spinner disc</td><td><span class="tag">Added</span></td><td>A small motor spins a vaned disc that throws seed 3 to 8 m wide.</td><td>Print flat. Four vanes.</td></tr>
+          <tr><td>Spray tank and nozzles</td><td><span class="tag k">Kept</span></td><td>Still sprays liquid, so one drone covers crop protection and re-seeding.</td><td>Use the base model.</td></tr>
+          <tr><td>Frame, 6 rotors, RTK GPS</td><td><span class="tag k">Kept</span></td><td>Flies the same GPS-planned lanes for both jobs.</td><td>Use the base model.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="notes">Simulation assumptions: 60 × 60 m field (0.36 ha), 25 kg hopper, 10-second refill stop at the pad, 3 m working height. These are adjustable estimates for the class MOC, not measured data. The drone is modelled from scratch to resemble a typical agricultural hexacopter.</p>
+  </section>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(function(){
+const $ = id => document.getElementById(id);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+const FIELD = 60, HALF = 30, PX = 10, CELLS = 60;
+const PAD = {x:-37, z:37};
+const CAP = 25, CRUISE = 3, LANDY = 0.75, REFILL_T = 10, CLIMB = 1.5;
+const ACCENT = 0xE89A2C, STOCK = 0xE4E7E1;
+
+// ---------- renderer / scene ----------
+const vp = $('vp'), canvas = $('c');
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 600);
+camera.position.set(3.4, 3.1, 4.2);
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.maxPolarAngle = Math.PI * 0.49;
+controls.minDistance = 1.8;
+controls.maxDistance = 170;
+controls.target.set(0, 1.7, 0);
+
+function applyTheme(){
+  const sky = new THREE.Color(css('--sky') || '#D3DCCF');
+  scene.background = sky;
+  scene.fog = new THREE.Fog(sky, 110, 300);
+}
+applyTheme();
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
+new MutationObserver(applyTheme).observe(document.documentElement, {attributes:true, attributeFilter:['data-theme']});
+
+scene.add(new THREE.HemisphereLight(0xf3f6ff, 0x5d4f36, 0.85));
+const sun = new THREE.DirectionalLight(0xffffff, 1.05);
+sun.position.set(28, 52, 22);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, {left:-48, right:48, top:48, bottom:-48, near:1, far:140});
+scene.add(sun);
+
+// ---------- ground and field ----------
+const grass = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), new THREE.MeshStandardMaterial({color:0x6E8C4C, roughness:1}));
+grass.rotation.x = -Math.PI/2; grass.position.y = -0.03; grass.receiveShadow = true;
+scene.add(grass);
+
+const fc = document.createElement('canvas'); fc.width = fc.height = FIELD * PX;
+const fx = fc.getContext('2d');
+const tex = new THREE.CanvasTexture(fc);
+tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+const fieldGeo = new THREE.PlaneGeometry(FIELD, FIELD); fieldGeo.rotateX(-Math.PI/2);
+const field = new THREE.Mesh(fieldGeo, new THREE.MeshStandardMaterial({map:tex, roughness:1}));
+field.receiveShadow = true;
+scene.add(field);
+
+function drawStubble(){
+  const W = fc.width;
+  fx.fillStyle = '#8B7151'; fx.fillRect(0, 0, W, W);
+  for (let i = 0; i < 12000; i++){
+    fx.fillStyle = Math.random() < .5 ? 'rgba(58,42,26,.22)' : 'rgba(196,166,112,.22)';
+    fx.fillRect(Math.random()*W, Math.random()*W, 2, 2);
+  }
+  fx.lineWidth = 1.5;
+  for (let v = 2; v < W; v += 5){
+    fx.strokeStyle = 'rgba(218,190,124,.55)';
+    fx.beginPath(); fx.moveTo(0, v);
+    for (let u = 0; u <= W; u += 30) fx.lineTo(u, v + (Math.random()-.5)*1.4);
+    fx.stroke();
+  }
+  tex.needsUpdate = true;
+}
+
+// levees around the field
+const leveeMat = new THREE.MeshStandardMaterial({color:0x7B6A48, roughness:1});
+[[0, -HALF-0.4, FIELD+1.6, 0.8], [0, HALF+0.4, FIELD+1.6, 0.8], [-HALF-0.4, 0, 0.8, FIELD], [HALF+0.4, 0, 0.8, FIELD]].forEach(([x,z,w,d])=>{
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.35, d), leveeMat);
+  m.position.set(x, 0.12, z); m.receiveShadow = true; m.castShadow = true; scene.add(m);
+});
+
+// landing pad + seed bags
+const pad = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.1, 4.2), new THREE.MeshStandardMaterial({color:0x8E948C, roughness:.9}));
+pad.position.set(PAD.x, 0.05, PAD.z); pad.receiveShadow = true; scene.add(pad);
+const ring = new THREE.Mesh(new THREE.TorusGeometry(1.5, 0.06, 8, 48), new THREE.MeshStandardMaterial({color:ACCENT}));
+ring.rotation.x = Math.PI/2; ring.position.set(PAD.x, 0.11, PAD.z); scene.add(ring);
+for (let k = 0; k < 3; k++){
+  const bag = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.32, 0.45), new THREE.MeshStandardMaterial({color:0xD8C79E, roughness:1}));
+  bag.position.set(PAD.x + 2.9, 0.16 + (k===2 ? 0.32 : 0), PAD.z - 0.6 + (k===1 ? 0.55 : 0) + (k===2 ? 0.25 : 0));
+  bag.castShadow = true; scene.add(bag);
+}
+
+// ---------- drone ----------
+const drone = new THREE.Group(); scene.add(drone);
+const M = (c, o) => new THREE.MeshStandardMaterial(Object.assign({color:c, roughness:.55, metalness:.15}, o || {}));
+const matBody = M(0x2B302A), matCarbon = M(0x1E211E, {roughness:.4}), matWhite = M(0xE9ECE6, {roughness:.45});
+const matNew = M(ACCENT, {roughness:.4});
+const matShell = new THREE.MeshStandardMaterial({color:ACCENT, transparent:true, opacity:.32, side:THREE.DoubleSide, depthWrite:false, roughness:.2});
+const add = (parent, geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x||0, y||0, z||0); parent.add(m); return m; };
+
+add(drone, new THREE.BoxGeometry(0.74, 0.24, 0.74), matBody);
+add(drone, new THREE.CylinderGeometry(0.3, 0.36, 0.06, 6), matBody, 0, 0.15, 0);
+
+const props = [], discs = [];
+let rotorAnchor;
+for (let k = 0; k < 6; k++){
+  const g = new THREE.Group(); g.rotation.y = k * Math.PI/3 + Math.PI/6; drone.add(g);
+  const arm = add(g, new THREE.CylinderGeometry(0.035, 0.035, 0.92, 10), matCarbon, 0.66, 0.02, 0);
+  arm.rotation.z = Math.PI/2;
+  add(g, new THREE.CylinderGeometry(0.075, 0.075, 0.13, 16), matBody, 1.12, 0.08, 0);
+  add(g, new THREE.ConeGeometry(0.035, 0.08, 10), matWhite, 1.12, -0.06, 0).rotation.x = Math.PI;
+  const p = new THREE.Group(); p.position.set(1.12, 0.17, 0); g.add(p);
+  add(p, new THREE.BoxGeometry(0.92, 0.012, 0.07), matCarbon);
+  const d = add(p, new THREE.CircleGeometry(0.46, 32), new THREE.MeshBasicMaterial({color:0x222222, transparent:true, opacity:.14, depthWrite:false, side:THREE.DoubleSide}));
+  d.rotation.x = -Math.PI/2;
+  props.push(p); discs.push(d);
+  if (k === 0){ rotorAnchor = new THREE.Object3D(); rotorAnchor.position.set(1.12, 0.22, 0); g.add(rotorAnchor); }
+}
+
+// stock spray tank
+const tank = add(drone, new THREE.CylinderGeometry(0.22, 0.22, 0.42, 24), matWhite, 0, -0.35, -0.15);
+add(drone, new THREE.CylinderGeometry(0.07, 0.07, 0.05, 16), matBody, 0, -0.12, -0.15);
+const tankAnchor = new THREE.Object3D(); tankAnchor.position.set(-0.24, -0.35, -0.15); drone.add(tankAnchor);
+
+// RTK GPS antennas
+const gpsAnchor = new THREE.Object3D();
+[-0.27, 0.27].forEach(x=>{
+  add(drone, new THREE.CylinderGeometry(0.012, 0.012, 0.16, 6), matCarbon, x, 0.2, -0.3);
+  add(drone, new THREE.CylinderGeometry(0.07, 0.07, 0.03, 20), matWhite, x, 0.29, -0.3);
+});
+gpsAnchor.position.set(-0.27, 0.32, -0.3); drone.add(gpsAnchor);
+
+// landing gear
+[-1, 1].forEach(s=>{
+  [-0.25, 0.25].forEach(z=>{
+    const leg = add(drone, new THREE.CylinderGeometry(0.025, 0.025, 0.68, 8), matCarbon, s*0.39, -0.44, z);
+    leg.rotation.z = s * 0.27;
+  });
+  const skid = add(drone, new THREE.CylinderGeometry(0.028, 0.028, 1.1, 8), matCarbon, s*0.48, -0.75, 0);
+  skid.rotation.x = Math.PI/2;
+});
+
+// ----- added seeding parts -----
+const newMeshes = [];
+const hopper = new THREE.Group(); hopper.position.set(0, 0.12, 0.05); drone.add(hopper);
+const HOP = {h:0.46, rt:0.34, rb:0.15};
+const shell = add(hopper, new THREE.CylinderGeometry(HOP.rt, HOP.rb, HOP.h, 36, 1, true), matShell, 0, HOP.h/2 + 0.05, 0);
+newMeshes.push(add(hopper, new THREE.TorusGeometry(HOP.rt, 0.018, 8, 40), matNew, 0, HOP.h + 0.05, 0));
+newMeshes[0].rotation.x = Math.PI/2;
+newMeshes.push(add(hopper, new THREE.CylinderGeometry(HOP.rt + 0.01, HOP.rt + 0.01, 0.02, 36), matNew, 0, HOP.h + 0.065, 0));
+newMeshes.push(add(hopper, new THREE.CylinderGeometry(HOP.rb + 0.01, HOP.rb + 0.01, 0.06, 24), matNew, 0, 0.04, 0));
+const seedMat = M(0xB8893A, {roughness:.95, metalness:0});
+const seedFill = add(hopper, new THREE.BufferGeometry(), seedMat);
+let fillShown = -1;
+function setFill(level){
+  level = Math.max(0, Math.min(1, level));
+  if (Math.abs(level - fillShown) < 0.01) return;
+  fillShown = level;
+  seedFill.visible = level > 0.01;
+  if (!seedFill.visible) return;
+  const rb = HOP.rb - 0.015, rt = rb + (HOP.rt - 0.015 - rb) * level, h = (HOP.h - 0.01) * level;
+  seedFill.geometry.dispose();
+  seedFill.geometry = new THREE.CylinderGeometry(rt, rb, h, 32);
+  seedFill.position.y = 0.055 + h/2;
+}
+const hopperAnchor = new THREE.Object3D(); hopperAnchor.position.set(0, HOP.h + 0.08, 0); hopper.add(hopperAnchor);
+
+const feed = new THREE.Group(); drone.add(feed);
+const tube = add(feed, new THREE.CylinderGeometry(0.034, 0.034, 0.5, 12), matNew, 0, -0.37, 0.27); newMeshes.push(tube);
+const gate = new THREE.Group(); gate.position.set(0, -0.64, 0.27); feed.add(gate);
+newMeshes.push(add(gate, new THREE.BoxGeometry(0.13, 0.08, 0.13), matNew));
+add(gate, new THREE.BoxGeometry(0.05, 0.05, 0.08), matBody, 0.09, 0, 0);
+const gateAnchor = new THREE.Object3D(); gateAnchor.position.set(0.13, 0, 0); gate.add(gateAnchor);
+
+const spinner = new THREE.Group(); spinner.position.set(0, -0.705, 0.27); drone.add(spinner);
+const disc = new THREE.Group(); spinner.add(disc);
+newMeshes.push(add(disc, new THREE.CylinderGeometry(0.18, 0.18, 0.022, 32), matNew));
+for (let k = 0; k < 4; k++){
+  const v = add(disc, new THREE.BoxGeometry(0.15, 0.035, 0.014), matBody, 0, 0.026, 0);
+  v.rotation.y = k * Math.PI/2; v.translateX(0.08);
+}
+const discAnchor = new THREE.Object3D(); discAnchor.position.set(0, -0.02, 0.18); spinner.add(discAnchor);
+
+drone.traverse(o => { if (o.isMesh && o !== shell && !discs.includes(o)) o.castShadow = true; });
+
+function setHighlight(on){
+  matNew.color.setHex(on ? ACCENT : STOCK);
+  matShell.color.setHex(on ? ACCENT : 0xDDE6E8);
+}
+
+// ---------- labels ----------
+const labelDefs = [
+  {o:hopperAnchor, t:'Seed hopper · 25 kg', n:true},
+  {o:gateAnchor, t:'Metering gate', n:true},
+  {o:discAnchor, t:'Spinner disc', n:true},
+  {o:tankAnchor, t:'Spray tank · kept', n:false},
+  {o:rotorAnchor, t:'Rotor ×6 · kept', n:false},
+  {o:gpsAnchor, t:'RTK GPS · kept', n:false},
+];
+const labelsEl = $('labels');
+labelDefs.forEach(d=>{
+  const el = document.createElement('div');
+  el.className = 'lbl' + (d.n ? ' new' : '');
+  el.innerHTML = '<i></i>' + d.t;
+  labelsEl.appendChild(el); d.el = el;
+});
+const tmpV = new THREE.Vector3();
+function updateLabels(show){
+  const w = vp.clientWidth, h = vp.clientHeight;
+  labelDefs.forEach(d=>{
+    if (!show){ d.el.hidden = true; return; }
+    d.o.getWorldPosition(tmpV); tmpV.project(camera);
+    if (tmpV.z > 1){ d.el.hidden = true; return; }
+    d.el.hidden = false;
+    const x = (tmpV.x * .5 + .5) * w, y = (-tmpV.y * .5 + .5) * h;
+    d.el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -135%)`;
+  });
+}
+
+// ---------- seed particles ----------
+const NP = 1200;
+const pPos = new Float32Array(NP*3), pVel = new Float32Array(NP*3);
+for (let i = 0; i < NP; i++) pPos[i*3+1] = -50;
+const pGeo = new THREE.BufferGeometry(); pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+const particles = new THREE.Points(pGeo, new THREE.PointsMaterial({color:0xE9C066, size:0.11, sizeAttenuation:true}));
+particles.frustumCulled = false; scene.add(particles);
+let pNext = 0;
+const discWorld = new THREE.Vector3();
+function emit(n, sw, vx, vz){
+  disc.getWorldPosition(discWorld);
+  for (let k = 0; k < n; k++){
+    const i = pNext; pNext = (pNext + 1) % NP;
+    const a = Math.random() * Math.PI * 2, dist = Math.sqrt(Math.random()) * sw / 2, hs = dist / 0.7;
+    pPos[i*3] = discWorld.x; pPos[i*3+1] = discWorld.y; pPos[i*3+2] = discWorld.z;
+    pVel[i*3] = Math.cos(a)*hs + vx*0.6; pVel[i*3+1] = 0.4; pVel[i*3+2] = Math.sin(a)*hs + vz*0.6;
+  }
+}
+function stepParticles(dt){
+  for (let i = 0; i < NP; i++){
+    const y = pPos[i*3+1]; if (y < -1) continue;
+    pVel[i*3+1] -= 9.8 * dt;
+    pPos[i*3] += pVel[i*3]*dt; pPos[i*3+1] += pVel[i*3+1]*dt; pPos[i*3+2] += pVel[i*3+2]*dt;
+    if (pPos[i*3+1] <= 0.03) pPos[i*3+1] = -50;
+  }
+  pGeo.attributes.position.needsUpdate = true;
+}
+
+// ---------- simulation ----------
+const P = {speed:5, sw:5, rate:80, mult:5};
+const S = {};
+let WP = [], pathLine = null, texDirty = false, grid = new Uint8Array(CELLS*CELLS);
+
+function buildPath(){
+  WP = [];
+  const n = Math.ceil(FIELD / P.sw);
+  for (let k = 0; k < n; k++){
+    const z = Math.max(HALF - P.sw/2 - k*P.sw, -HALF + P.sw/2);
+    const dir = k % 2 === 0 ? 1 : -1;
+    WP.push({x:-HALF*dir, z, seed:false}, {x:HALF*dir, z, seed:true});
+  }
+  if (pathLine){ scene.remove(pathLine); pathLine.geometry.dispose(); }
+  const pts = [new THREE.Vector3(PAD.x, 0.07, PAD.z)].concat(WP.map(w => new THREE.Vector3(w.x, 0.07, w.z)));
+  pathLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),
+    new THREE.LineDashedMaterial({color:ACCENT, dashSize:0.8, gapSize:0.6, transparent:true, opacity:.7}));
+  pathLine.computeLineDistances();
+  pathLine.visible = mode === 'sim';
+  scene.add(pathLine);
+}
+
+function resetSim(){
+  Object.assign(S, {x:PAD.x, z:PAD.z, y:LANDY, hopper:CAP, i:0, state:'idle', after:'work', timer:0,
+    resume:null, final:false, used:0, refills:0, time:0, covered:0, seeding:false, vx:0, vz:0, yaw:0, grown:false});
+  grid = new Uint8Array(CELLS*CELLS);
+  drawStubble();
+  buildPath();
+  running = false;
+  syncSimUI();
+}
+
+function markGrid(x0, z0, x1, z1){
+  const r = P.sw/2;
+  const minX = Math.max(0, Math.floor(Math.min(x0,x1) - r + HALF)), maxX = Math.min(CELLS-1, Math.floor(Math.max(x0,x1) + r + HALF));
+  const minZ = Math.max(0, Math.floor(Math.min(z0,z1) - r + HALF)), maxZ = Math.min(CELLS-1, Math.floor(Math.max(z0,z1) + r + HALF));
+  const dx = x1-x0, dz = z1-z0, L2 = dx*dx + dz*dz || 1e-9;
+  for (let cz = minZ; cz <= maxZ; cz++) for (let cx = minX; cx <= maxX; cx++){
+    const idx = cz*CELLS + cx; if (grid[idx]) continue;
+    const px = cx - HALF + .5, pz = cz - HALF + .5;
+    let t = ((px-x0)*dx + (pz-z0)*dz) / L2; t = Math.max(0, Math.min(1, t));
+    const ex = x0 + t*dx - px, ez = z0 + t*dz - pz;
+    if (ex*ex + ez*ez <= r*r){ grid[idx] = 1; S.covered++; }
+  }
+}
+function paint(x0, z0, x1, z1){
+  const len = Math.hypot(x1-x0, z1-z0); if (len <= 0) return;
+  const ux = (x1-x0)/len, uz = (z1-z0)/len, px = -uz, pz = ux;
+  const n = Math.ceil(len * P.sw * 6);
+  fx.fillStyle = 'rgba(240,214,140,.9)';
+  for (let k = 0; k < n; k++){
+    const a = Math.random()*len, l = (Math.random() + Math.random() - 1) * P.sw * 0.6;
+    const x = x0 + ux*a + px*l, z = z0 + uz*a + pz*l;
+    if (x < -HALF || x > HALF || z < -HALF || z > HALF) continue;
+    fx.fillRect((x+HALF)*PX - .8, (z+HALF)*PX - .8, 1.6, 1.6);
+  }
+  markGrid(x0, z0, x1, z1);
+  texDirty = true;
+}
+function moveToward(tx, tz, step){
+  const dx = tx - S.x, dz = tz - S.z, d = Math.hypot(dx, dz);
+  if (d <= step){ S.x = tx; S.z = tz; return true; }
+  S.x += dx/d*step; S.z += dz/d*step; return false;
+}
+function simUpdate(dt){
+  if (S.state === 'idle' || S.state === 'done') return;
+  S.time += dt; S.seeding = false;
+  const x0 = S.x, z0 = S.z;
+  let step = P.speed * dt;
+  switch (S.state){
+    case 'climb':
+      S.y = Math.min(CRUISE, S.y + CLIMB*dt);
+      if (S.y >= CRUISE) S.state = S.after;
+      break;
+    case 'descend':
+      S.y = Math.max(LANDY, S.y - CLIMB*dt);
+      if (S.y <= LANDY){
+        if (S.final){ S.state = 'done'; running = false; }
+        else { S.state = 'refill'; S.timer = REFILL_T; }
+      }
+      break;
+    case 'refill':
+      S.timer -= dt;
+      S.hopper = Math.min(CAP, S.hopper + CAP/REFILL_T*dt);
+      if (S.timer <= 0){ S.hopper = CAP; S.refills++; S.after = 'back'; S.state = 'climb'; }
+      break;
+    case 'toBase':
+      if (moveToward(PAD.x, PAD.z, step)) S.state = 'descend';
+      break;
+    case 'back':
+      if (moveToward(S.resume.x, S.resume.z, step)) S.state = 'work';
+      break;
+    case 'work': {
+      const need = P.sw * P.rate / 1e4; // kg per metre flown
+      while (step > 1e-6 && S.state === 'work'){
+        const w = WP[S.i];
+        const dx = w.x - S.x, dz = w.z - S.z, d = Math.hypot(dx, dz);
+        let m = Math.min(step, d);
+        if (w.seed && m*need > S.hopper) m = S.hopper / need;
+        const nx = d > 0 ? S.x + dx/d*m : S.x, nz = d > 0 ? S.z + dz/d*m : S.z;
+        if (w.seed && m > 0){
+          paint(S.x, S.z, nx, nz);
+          S.hopper -= m*need; S.used += m*need; S.seeding = true;
+        }
+        S.x = nx; S.z = nz; step -= m;
+        if (m >= d - 1e-6){
+          S.i++;
+          if (S.i >= WP.length){ S.final = true; S.state = 'toBase'; }
+        } else if (w.seed && S.hopper <= 1e-6){
+          S.hopper = 0; S.resume = {x:S.x, z:S.z}; S.final = false; S.state = 'toBase';
+        } else break;
+      }
+      break;
+    }
+  }
+  if (dt > 0){ S.vx = (S.x - x0)/dt; S.vz = (S.z - z0)/dt; }
+}
+
+function grow(){
+  if (S.grown) return;
+  S.grown = true; $('grow').disabled = true;
+  const greens = ['#7FA84A', '#5E9A3A', '#4C8A30', '#3E7A28'];
+  let pass = 0;
+  const tick = () => {
+    fx.lineWidth = 1.3;
+    for (let idx = 0; idx < grid.length; idx++){
+      if (!grid[idx]) continue;
+      const cx = idx % CELLS, cz = (idx / CELLS) | 0;
+      for (let k = 0; k < 4; k++){
+        const u = (cx + Math.random()) * PX, v = (cz + Math.random()) * PX;
+        fx.strokeStyle = greens[(pass + k) % greens.length];
+        fx.beginPath(); fx.moveTo(u, v); fx.lineTo(u + (Math.random()-.5)*2.5, v - 2 - Math.random()*2); fx.stroke();
+      }
+    }
+    tex.needsUpdate = true;
+    if (++pass < 6) setTimeout(tick, reduceMotion ? 0 : 220);
+  };
+  tick();
+}
+
+// ---------- UI ----------
+let mode = 'model', running = false;
+const fmtTime = s => { s = Math.floor(s); return Math.floor(s/60) + ':' + String(s%60).padStart(2, '0'); };
+const statusText = () => {
+  if (mode === 'model') return ['model', 'Inspecting model'];
+  const lanes = WP.length/2, lane = Math.min(lanes, Math.floor(S.i/2) + 1);
+  switch (S.state){
+    case 'idle': return ['idle', 'Ready on pad'];
+    case 'climb': return ['climb', 'Taking off'];
+    case 'work': return ['work', S.seeding ? `Seeding lane ${lane} of ${lanes}` : 'Turning to next lane'];
+    case 'toBase': return ['toBase', S.final ? 'Field done · returning' : 'Hopper empty · returning to refill'];
+    case 'descend': return ['descend', 'Landing'];
+    case 'refill': return ['refill', `Refilling hopper · ${Math.max(0, S.timer).toFixed(0)} s`];
+    case 'back': return ['back', 'Resuming at last seeded point'];
+    case 'done': return ['done', 'Field seeded'];
+  }
+  return ['idle', ''];
+};
+function syncSimUI(){
+  const idle = S.state === 'idle';
+  $('swath').disabled = !idle; $('rate').disabled = !idle;
+  $('play').textContent = S.state === 'done' ? 'Done' : running ? 'Pause' : (idle ? 'Start' : 'Resume');
+  $('play').disabled = S.state === 'done';
+  $('grow').disabled = S.grown || S.covered === 0;
+}
+let lastStat = 0;
+function updateStats(force){
+  const now = performance.now();
+  if (!force && now - lastStat < 120) return;
+  lastStat = now;
+  const [s, txt] = statusText();
+  const chip = $('chip'); chip.dataset.s = s; chip.textContent = txt;
+  const area = S.covered / 1e4;
+  $('st-cov').textContent = (S.covered / (CELLS*CELLS) * 100).toFixed(1) + '%';
+  $('st-area').textContent = area.toFixed(3) + ' ha';
+  $('st-used').textContent = S.used.toFixed(1) + ' kg';
+  $('st-ref').textContent = S.refills;
+  $('st-time').textContent = fmtTime(S.time);
+  $('st-rate').textContent = S.time > 5 ? (area / (S.time/3600)).toFixed(2) + ' ha/h' : '– ha/h';
+  $('st-hop').textContent = S.hopper.toFixed(1) + ' / ' + CAP + ' kg';
+  $('hopbar').style.width = (S.hopper / CAP * 100).toFixed(1) + '%';
+  if (S.covered > 0 && !S.grown) $('grow').disabled = false;
+}
+
+const camGoal = {
+  model: {pos: new THREE.Vector3(3.4, 3.1, 4.2), tgt: new THREE.Vector3(0, 1.7, 0)},
+  sim:   {pos: new THREE.Vector3(-26, 40, 74), tgt: new THREE.Vector3(-2, 0, 6)},
+};
+let camAnim = null;
+function setMode(m){
+  mode = m;
+  $('tab-model').classList.toggle('on', m === 'model'); $('tab-model').setAttribute('aria-selected', m === 'model');
+  $('tab-sim').classList.toggle('on', m === 'sim'); $('tab-sim').setAttribute('aria-selected', m === 'sim');
+  $('panel-model').hidden = m !== 'model';
+  $('panel-sim').hidden = m !== 'sim';
+  if (pathLine) pathLine.visible = m === 'sim';
+  if (m === 'model'){ running = false; syncSimUI(); }
+  camAnim = {t:0, p0:camera.position.clone(), t0:controls.target.clone(), p1:camGoal[m].pos.clone(), t1:camGoal[m].tgt.clone()};
+  updateStats(true);
+}
+$('tab-model').onclick = () => setMode('model');
+$('tab-sim').onclick = () => setMode('sim');
+
+$('play').onclick = () => {
+  if (S.state === 'done') return;
+  if (S.state === 'idle'){ S.state = 'climb'; S.after = 'work'; }
+  running = !running; syncSimUI(); updateStats(true);
+};
+$('reset').onclick = () => { resetSim(); updateStats(true); };
+document.querySelectorAll('#mult button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('#mult button').forEach(x => x.classList.toggle('on', x === b));
+  P.mult = +b.dataset.m;
+});
+const bindRange = (id, key, unit, onChange) => {
+  const el = $(id), out = $('o-' + id);
+  const upd = () => { P[key] = +el.value; out.textContent = el.value + ' ' + unit; if (onChange) onChange(); };
+  el.addEventListener('input', upd); upd();
+};
+bindRange('speed', 'speed', 'm/s');
+bindRange('swath', 'sw', 'm', () => { if (S.state === 'idle') buildPath(); });
+bindRange('rate', 'rate', 'kg/ha');
+$('grow').onclick = grow;
+
+const optLabels = $('opt-labels'), optExplode = $('opt-explode'), optHi = $('opt-highlight');
+optHi.onchange = () => setHighlight(optHi.checked);
+
+// ---------- loop ----------
+function resize(){
+  const w = vp.clientWidth, h = vp.clientHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(vp);
+resize();
+
+resetSim();
+setHighlight(true);
+updateStats(true);
+
+const clock = new THREE.Clock();
+let explode = 0, t = 0;
+const prevDrone = new THREE.Vector3();
+function frame(){
+  requestAnimationFrame(frame);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  t += dt;
+
+  if (mode === 'sim' && running){
+    simUpdate(dt * P.mult);
+    if (S.state === 'done') syncSimUI();
+  }
+  if (texDirty){ tex.needsUpdate = true; texDirty = false; }
+
+  // drone pose
+  let airborne;
+  prevDrone.copy(drone.position);
+  if (mode === 'model'){
+    airborne = true;
+    drone.position.lerp(tmpV.set(0, 1.7 + Math.sin(t*1.6)*0.03, 0), 0.12);
+    drone.rotation.y += (0 - drone.rotation.y) * 0.08;
+  } else {
+    airborne = S.y > LANDY + 0.02 || (running && S.state === 'climb');
+    const bob = airborne ? Math.sin(t*1.8)*0.04 : 0;
+    drone.position.set(S.x, S.y + bob, S.z);
+    const sp = Math.hypot(S.vx, S.vz);
+    if (sp > 0.3){
+      S.yaw = Math.atan2(S.vx, S.vz);
+      let dy = S.yaw - drone.rotation.y;
+      dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+      drone.rotation.y += dy * Math.min(1, dt * 4);
+    }
+    drone.rotation.z = THREE.MathUtils.clamp(-S.vx * 0.012, -0.12, 0.12) * (running ? 1 : 0);
+    drone.rotation.x = THREE.MathUtils.clamp(S.vz * 0.012, -0.12, 0.12) * (running ? 1 : 0);
+  }
+
+  // rotors and disc
+  const spinning = airborne && (mode === 'model' || running || S.y > LANDY + 0.02);
+  props.forEach((p, k) => { p.rotation.y += (spinning ? 38 : 0) * dt * (k % 2 ? 1 : -1); });
+  discs.forEach(d => d.visible = spinning);
+  const seedingNow = mode === 'sim' && running && S.seeding;
+  if (seedingNow || mode === 'model') disc.rotation.y += (seedingNow ? 30 : 6) * dt;
+
+  // particles
+  if (seedingNow) emit(Math.min(40, Math.ceil(10 * Math.min(P.mult, 5) * P.rate / 80)), P.sw, S.vx * 0.5, S.vz * 0.5);
+  stepParticles(dt * Math.min(P.mult, 2.5) * (mode === 'sim' ? 1 : 0) + (mode === 'model' ? dt : 0));
+
+  // hopper fill
+  setFill(S.hopper / CAP);
+
+  // exploded view
+  const exGoal = mode === 'model' && optExplode.checked ? 1 : 0;
+  explode += (exGoal - explode) * Math.min(1, dt * 5);
+  hopper.position.y = 0.12 + explode * 0.6;
+  feed.position.y = -explode * 0.22;
+  spinner.position.y = -0.705 - explode * 0.5;
+
+  // camera
+  if (camAnim){
+    camAnim.t = Math.min(1, camAnim.t + dt / (reduceMotion ? 0.01 : 1.1));
+    const e = camAnim.t < .5 ? 2*camAnim.t*camAnim.t : 1 - Math.pow(-2*camAnim.t + 2, 2)/2;
+    camera.position.lerpVectors(camAnim.p0, camAnim.p1, e);
+    controls.target.lerpVectors(camAnim.t0, camAnim.t1, e);
+    if (camAnim.t >= 1) camAnim = null;
+  } else if (mode === 'sim' && $('follow').checked){
+    const delta = tmpV.copy(drone.position).sub(prevDrone);
+    camera.position.add(delta);
+    controls.target.lerp(drone.position, 0.08);
+  }
+  controls.update();
+  renderer.render(scene, camera);
+  updateLabels(mode === 'model' && optLabels.checked && !camAnim);
+  updateStats(false);
+}
+frame();
+})();
+</script>
+
+</body>
+</html>
